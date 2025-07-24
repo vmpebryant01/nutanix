@@ -1,0 +1,38 @@
+---
+# export_categories.yml
+# Author: Paul Bryant
+#
+# Purpose: Export all VM category assignments to a JSON report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini export_categories.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/export_categories.json
+
+- name: Export Category Assignments
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all VMs (category metadata included)
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: vms
+
+    - name: Save all categories/VMs to JSON file
+      copy:
+        dest: "../../docs/reports/export_categories.json"
+        content: "{{ vms.json | to_nice_json }}"
+      delegate_to: localhost

@@ -1,0 +1,54 @@
+---
+# scheduled_snapshot_validation.yml
+# Author: Paul Bryant
+#
+# Purpose: On schedule, snapshot all critical VMs, validate completion, optionally test restore, and report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini scheduled_snapshot_validation.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - VMs to snapshot listed in CSV (../../csv_samples/critical_vms.csv).
+#   - CSV columns: VM_UUID, VMName
+
+- name: Scheduled Snapshot and Validation
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read critical VM list from CSV
+      community.general.read_csv:
+        path: ../../csv_samples/critical_vms.csv
+      register: critical_vms
+
+    - name: Take snapshot of each VM
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.VM_UUID }}/take_snapshot"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "snapshot_name": "ScheduledBackup_{{ item.VMName }}_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
+          }
+        validate_certs: false
+        status_code: 202
+      loop: "{{ critical_vms.list }}"
+      loop_control:
+        label: "{{ item.VMName }}"
+      register: snapshot_results
+
+    - name: Validate snapshot completion (poll status)
+      # Real-world: poll Nutanix tasks/status to confirm completion.
+      debug:
+        msg: "Snapshot validation polling logic would be implemented here. For now, see snapshot_results."
+
+    - name: Export snapshot run report
+      copy:
+        dest: "../../docs/reports/snapshot_validation_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}.json"
+        content: "{{ snapshot_results.results | to_nice_json }}"
+      delegate_to: localhost

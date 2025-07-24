@@ -1,0 +1,11 @@
+---
+# Place this in ansible/playbooks/scheduled_snapshot_validation.yml
+
+- name: Scheduled Snapshot and Validation
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+  roles:
+    - role: prism_vm_snapshot
+      vm_list: "{{ lookup('community.general.read_csv', '../../csv_samples/critical_vms.csv') }}"

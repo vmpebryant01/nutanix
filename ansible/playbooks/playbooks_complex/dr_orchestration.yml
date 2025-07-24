@@ -1,0 +1,70 @@
+---
+# dr_orchestration.yml
+# Author: Paul Bryant
+#
+# Purpose: Execute a DR test—initiate snapshots, power up at DR site, validate, and generate compliance report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini dr_orchestration.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - VMs for DR listed in CSV/YAML or group.
+#   - Access to DR site Prism credentials.
+
+- name: Automated DR Orchestration & Validation
+  hosts: prism_dr_site
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+    - ../../.env.dr_vault
+
+  tasks:
+    - name: Snapshot VMs before DR event
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.uuid }}/take_snapshot"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "snapshot_name": "DRTest_{{ item.name }}_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
+          }
+        validate_certs: false
+        status_code: 202
+      loop: "{{ groups['dr_vms'] }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Power on VMs at DR site
+      uri:
+        url: "https://{{ dr_prism_central }}:9440/api/nutanix/v3/vms/{{ item.uuid }}/set_power_state"
+        method: POST
+        user: "{{ dr_prism_user }}"
+        password: "{{ dr_prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "transition": "ON" }
+        validate_certs: false
+        status_code: 202
+      loop: "{{ groups['dr_vms'] }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Run DR validation checks (HTTP/port/app health)
+      uri:
+        url: "{{ item.health_endpoint }}"
+        method: GET
+        validate_certs: false
+      register: dr_validation
+      loop: "{{ groups['dr_vms'] }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Generate DR compliance report
+      copy:
+        dest: "../../docs/reports/dr_compliance_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}.json"
+        content: "{{ dr_validation }}"
+      delegate_to: localhost

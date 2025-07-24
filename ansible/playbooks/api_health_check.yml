@@ -1,0 +1,53 @@
+---
+# api_health_check.yml
+# Author: Paul Bryant
+#
+# Purpose: Perform a health check of Nutanix Prism Central API endpoints and report status.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini api_health_check.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/api_health_check.json
+
+- name: Nutanix Prism Central API Health Check
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Check /v3/cluster endpoint
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/cluster"
+        method: GET
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      register: cluster_health
+
+    - name: Check /v3/vms/list endpoint
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 1 }
+      register: vm_health
+
+    - name: Write API health check report to file
+      copy:
+        dest: "../../docs/reports/api_health_check.json"
+        content: |
+          {
+            "cluster_status": {{ cluster_health.status }},
+            "cluster_response": {{ cluster_health.json | to_nice_json }},
+            "vms_status": {{ vm_health.status }},
+            "vms_response": {{ vm_health.json | to_nice_json }}
+          }
+      delegate_to: localhost

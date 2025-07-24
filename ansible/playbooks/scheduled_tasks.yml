@@ -1,0 +1,38 @@
+---
+# scheduled_tasks.yml
+# Author: Paul Bryant
+#
+# Purpose: Export all scheduled tasks (e.g., snapshot, backup) for compliance and reporting.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini scheduled_tasks.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/scheduled_tasks.json
+
+- name: Export Scheduled Tasks
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all scheduled tasks
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/scheduled_tasks/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "scheduled_task", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: tasks
+
+    - name: Write scheduled tasks to file
+      copy:
+        dest: "../../docs/reports/scheduled_tasks.json"
+        content: "{{ tasks.json | to_nice_json }}"
+      delegate_to: localhost

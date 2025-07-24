@@ -1,0 +1,6 @@
+# prism_dr_site.yml
+# Non-sensitive group-wide variables for Prism DR site hosts
+
+dr_api_port: 9440
+dr_api_protocol: https
+# Any non-secret global config for DR site Prism Central can go here

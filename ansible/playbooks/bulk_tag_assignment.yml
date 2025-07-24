@@ -1,0 +1,54 @@
+---
+# bulk_tag_assignment.yml
+# Author: Paul Bryant
+#
+# Purpose: Bulk assign custom tags to VMs from CSV mapping for inventory or policy use.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini bulk_tag_assignment.yml --ask-vault-pass
+#
+# CSV:
+#   - ../../csv_samples/bulk_tag_assignment.csv: VMName,Tag
+
+- name: Bulk Tag Assignment to VMs
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read VM/tag mapping from CSV
+      community.general.read_csv:
+        path: ../../csv_samples/bulk_tag_assignment.csv
+      register: tags
+
+    - name: Find VM UUID by name
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "filter": "vm_name=={{ item.VMName }}",
+            "kind": "vm"
+          }
+        return_content: yes
+        validate_certs: false
+      loop: "{{ tags.list }}"
+      register: vm_lookup
+
+    - name: Assign tag to each VM
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.0.json.entities[0].metadata.uuid }}/tags/{{ item.1.Tag }}"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+        body_format: json
+        body: "{{ {} }}"
+      loop: "{{ zip(vm_lookup.results, tags.list) | list }}"
+      when: item.0.json.entities|length > 0

@@ -1,0 +1,112 @@
+---
+# app_onboarding.yml
+# Author: Paul Bryant
+#
+# Purpose: Deploy a full app stack (multiple VMs, networks, categories), register in CMDB, create security rules, and update ServiceNow for ownership.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini app_onboarding.yml --extra-vars "app_spec=../../csv_samples/app_spec.yaml" --ask-vault-pass
+#
+# Prerequisites:
+#   - app_spec YAML defines VMs, categories, networks, owners, etc.
+#   - .env.ansible_vault has Prism and CMDB/ServiceNow credentials.
+#   - ServiceNow/CMDB REST APIs accessible.
+
+- name: End-to-End Automated App Onboarding
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+  vars:
+    app_spec_file: "{{ app_spec | default('../../csv_samples/app_spec.yaml') }}"
+  tasks:
+    - name: Load app spec (YAML) for stack definition
+      include_vars:
+        file: "{{ app_spec_file }}"
+        name: app
+
+    - name: Create required networks
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/subnets"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ item }}"
+        validate_certs: false
+        status_code: 201
+      loop: "{{ app.networks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: app.networks is defined
+
+    - name: Deploy application VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ item }}"
+        validate_certs: false
+        status_code: 202
+      loop: "{{ app.vms }}"
+      loop_control:
+        label: "{{ item.spec.name }}"
+
+    - name: Assign categories/tags to VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.uuid }}/categories/{{ item.category }}"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+        body_format: json
+        body: "{{ {} }}"
+      loop: "{{ app.category_assignments }}"
+      when: app.category_assignments is defined
+
+    - name: Register new app in CMDB
+      uri:
+        url: "{{ cmdb_url }}"
+        method: POST
+        user: "{{ cmdb_user }}"
+        password: "{{ cmdb_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ app.cmdb_entry }}"
+        headers:
+          Content-Type: "application/json"
+        validate_certs: false
+        status_code: 201
+
+    - name: Create firewall rules for app
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/network_security_rules"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ item }}"
+        validate_certs: false
+        status_code: 201
+      loop: "{{ app.security_rules }}"
+      when: app.security_rules is defined
+
+    - name: Update ServiceNow ticket for onboarding completion
+      uri:
+        url: "{{ snow_url }}"
+        method: PATCH
+        user: "{{ snow_user }}"
+        password: "{{ snow_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ app.snow_update }}"
+        headers:
+          Content-Type: "application/json"
+        validate_certs: false
+        status_code: 200

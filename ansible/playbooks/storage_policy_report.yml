@@ -1,0 +1,38 @@
+---
+# storage_policy_report.yml
+# Author: Paul Bryant
+#
+# Purpose: Export all storage policy assignments and related details.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini storage_policy_report.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/storage_policy_report.json
+
+- name: Export Storage Policy Report
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all storage policies
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/storage_policies/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "storage_policy", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: policies
+
+    - name: Write storage policy report to file
+      copy:
+        dest: "../../docs/reports/storage_policy_report.json"
+        content: "{{ policies.json | to_nice_json }}"
+      delegate_to: localhost

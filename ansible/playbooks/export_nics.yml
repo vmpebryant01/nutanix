@@ -1,0 +1,38 @@
+---
+# export_nics.yml
+# Author: Paul Bryant
+#
+# Purpose: Export all VM NIC information from Prism Central to a local JSON report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini export_nics.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/export_nics.json
+
+- name: Export VM NIC Info
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all VMs for NIC info
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: vm_list
+
+    - name: Save NIC info to file
+      copy:
+        dest: "../../docs/reports/export_nics.json"
+        content: "{{ vm_list.json | to_nice_json }}"
+      delegate_to: localhost

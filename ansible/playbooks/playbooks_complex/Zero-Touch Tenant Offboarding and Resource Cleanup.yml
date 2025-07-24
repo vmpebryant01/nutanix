@@ -1,0 +1,75 @@
+---
+# tenant_offboarding.yml
+# Author: Paul Bryant
+#
+# Purpose: Decommission all tenant resources, snapshot/archive, remove from monitoring/CMDB, delete, and export audit trail.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini tenant_offboarding.yml --extra-vars "tenant_tag=Project123" --ask-vault-pass
+#
+# Prerequisites:
+#   - tenant_tag is unique identifier for tenant resources
+
+- name: Tenant Offboarding and Cleanup
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  vars:
+    tenant_tag: "{{ tenant_tag | default('N/A') }}"
+
+  tasks:
+    - name: Find all resources for tenant
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "kind": "vm", "length": 500, "filter": "category=={{ tenant_tag }}" }'
+        return_content: yes
+        validate_certs: false
+      register: tenant_vms
+
+    - name: Snapshot all tenant VMs for archive
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.metadata.uuid }}/take_snapshot"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{"snapshot_name": "Offboard_Archive_{{ item.spec.name }}_{{ lookup("pipe", "date +%Y%m%d") }}"}'
+        validate_certs: false
+        status_code: 202
+      loop: "{{ tenant_vms.json.entities }}"
+
+    - name: Remove from monitoring system (custom API/integration)
+      debug:
+        msg: "Insert API call to monitoring platform here."
+
+    - name: Remove from CMDB
+      uri:
+        url: "{{ cmdb_url }}/{{ item.spec.name }}"
+        method: DELETE
+        user: "{{ cmdb_user }}"
+        password: "{{ cmdb_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      loop: "{{ tenant_vms.json.entities }}"
+
+    - name: Delete tenant VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.metadata.uuid }}"
+        method: DELETE
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      loop: "{{ tenant_vms.json.entities }}"
+
+    - name: Export final offboarding audit package (ZIP/report)
+      debug:
+        msg: "Logic to collect logs, snapshots, and export ZIP for audit would be implemented here."

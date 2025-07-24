@@ -1,0 +1,38 @@
+---
+# log_export_map.yml
+# Author: Paul Bryant
+#
+# Purpose: Export configuration of log export targets (e.g., syslog, SIEM) for compliance.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini log_export_map.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/log_export_map.json
+
+- name: Export Log Export Targets
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query log export configuration
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/log_server_configs/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "log_server_config", "length": 100 }
+        return_content: yes
+        validate_certs: false
+      register: logs
+
+    - name: Write log export map to file
+      copy:
+        dest: "../../docs/reports/log_export_map.json"
+        content: "{{ logs.json | to_nice_json }}"
+      delegate_to: localhost

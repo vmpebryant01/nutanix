@@ -1,0 +1,6 @@
+# prism_central.yml
+# Non-sensitive group-wide variables for Prism Central hosts
+
+prism_api_port: 9440
+prism_api_protocol: https
+# Any non-secret global config for Prism Central can go here

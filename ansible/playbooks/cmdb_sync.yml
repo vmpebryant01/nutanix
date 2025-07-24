@@ -1,0 +1,50 @@
+---
+# cmdb_sync.yml
+# Author: Paul Bryant
+#
+# Purpose: Sync VM data from Nutanix Prism Central to an external CMDB (e.g., ServiceNow) via REST API.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini cmdb_sync.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - CMDB API endpoint/credentials in .env.ansible_vault
+#   - VM data will be POSTed as JSON; adjust mapping as needed
+
+- name: Sync VM inventory to CMDB
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: vms
+
+    - name: Push each VM record to CMDB
+      uri:
+        url: "{{ cmdb_url }}"
+        method: POST
+        user: "{{ cmdb_user }}"
+        password: "{{ cmdb_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ item }}"
+        headers:
+          Content-Type: "application/json"
+        validate_certs: false
+        status_code: 201
+      loop: "{{ vms.json.entities }}"
+      loop_control:
+        label: "{{ item.spec.name }}"

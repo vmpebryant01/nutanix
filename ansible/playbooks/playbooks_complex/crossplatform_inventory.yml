@@ -1,0 +1,61 @@
+---
+# crossplatform_inventory.yml
+# Author: Paul Bryant
+#
+# Purpose: Gather VM inventory from AHV and vSphere, reconcile with CMDB, and export drift report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini crossplatform_inventory.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - vSphere and CMDB credentials in vault
+#   - Python script or plugin for vSphere query
+
+- name: Cross-Platform VM Inventory & Reconciliation
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+    - ../../.env.vsphere_vault
+
+  tasks:
+    - name: Gather Nutanix VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "kind": "vm", "length": 500 }'
+        return_content: yes
+        validate_certs: false
+      register: nutanix_vms
+
+    - name: Gather vSphere VMs (custom Python script, shell out)
+      command: python3 ../../utils/vsphere_inventory.py
+      register: vsphere_vms
+
+    - name: Query all VMs in CMDB
+      uri:
+        url: "{{ cmdb_url }}"
+        method: GET
+        user: "{{ cmdb_user }}"
+        password: "{{ cmdb_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      register: cmdb_vms
+
+    - name: Reconcile all VM lists and find drift
+      set_fact:
+        drift_report: |
+          {
+            "missing_in_cmdb": {{ nutanix_vms.json.entities | rejectattr('spec.name', 'in', cmdb_vms.json | map(attribute='name') | list) | list }},
+            "missing_in_vsphere": {{ nutanix_vms.json.entities | rejectattr('spec.name', 'in', vsphere_vms.stdout_lines | list) | list }}
+          }
+
+    - name: Export reconciliation report
+      copy:
+        dest: "../../docs/reports/vm_reconciliation.json"
+        content: "{{ drift_report }}"
+      delegate_to: localhost

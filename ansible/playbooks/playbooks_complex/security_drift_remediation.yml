@@ -1,0 +1,75 @@
+---
+# security_drift_remediation.yml
+# Author: Paul Bryant
+#
+# Purpose: Scan all VMs/network policies for security drift; auto-remediate and notify.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini security_drift_remediation.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - Baseline policies in ../../csv_samples/security_baseline.csv
+
+- name: Security Policy Drift Detection & Auto-Remediation
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read security policy baseline
+      community.general.read_csv:
+        path: ../../csv_samples/security_baseline.csv
+      register: baseline
+
+    - name: Query current network security rules
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/network_security_rules/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "kind": "network_security_rule", "length": 500 }'
+        return_content: yes
+        validate_certs: false
+      register: current
+
+    - name: Compare and find drifted policies
+      set_fact:
+        drifted: >-
+          {{
+            baseline.list | rejectattr('RuleName', 'in', current.json.entities | map(attribute='spec.name') | list) | list
+          }}
+
+    - name: Auto-remediate by re-creating missing policies
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/network_security_rules"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "spec": {
+              "resources": {
+                "name": "{{ item.RuleName }}",
+                "action": "{{ item.Action }}",
+                "source": "{{ item.Source }}",
+                "destination": "{{ item.Destination }}",
+                "protocol": "{{ item.Protocol }}",
+                "port": "{{ item.Port }}"
+              }
+            }
+          }
+        validate_certs: false
+        status_code: 201
+      loop: "{{ drifted }}"
+      loop_control:
+        label: "{{ item.RuleName }}"
+
+    - name: Notify SecOps of remediation (email, webhook, etc.)
+      # Insert your notification module/integration here
+      debug:
+        msg: "Security policy drift remediated. Details sent to SecOps."

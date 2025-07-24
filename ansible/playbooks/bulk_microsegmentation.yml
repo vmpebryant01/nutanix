@@ -1,0 +1,59 @@
+---
+# bulk_microsegmentation.yml
+# Author: Paul Bryant
+#
+# Purpose: Bulk import microsegmentation (network security) rules to Nutanix Prism Central.
+# 
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini bulk_microsegmentation.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - community.general collection installed (`ansible-galaxy collection install community.general`)
+#   - .env.ansible_vault file with `prism_user` and `prism_pass`
+#   - prism_central host defined in inventory
+#   - CSV file at ../../csv_samples/microsegmentation_rules.csv (sample in repo)
+#   - API credentials must have sufficient privileges to create security rules
+
+- name: Bulk Microsegmentation Rule Import
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read microsegmentation rules from CSV
+      # Reads CSV into a list of dictionaries; fieldnames must match CSV header
+      community.general.read_csv:
+        path: ../../csv_samples/microsegmentation_rules.csv
+      register: rules
+
+    - name: Create microsegmentation rules
+      # Calls Prism Central API to create each rule
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/network_security_rules"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "spec": {
+              "resources": {
+                "name": "{{ item.RuleName }}",
+                "description": "{{ item.Description }}",
+                "action": "{{ item.Action }}",
+                "source": "{{ item.Source }}",
+                "destination": "{{ item.Destination }}",
+                "protocol": "{{ item.Protocol }}",
+                "port": "{{ item.Port }}",
+                "enabled": {{ 'true' if item.Enabled | upper == "TRUE" else 'false' }}
+              }
+            }
+          }
+        validate_certs: false
+        status_code: 201
+      loop: "{{ rules.list }}"
+      loop_control:
+        label: "{{ item.RuleName }}"
+      # Add error handling as needed

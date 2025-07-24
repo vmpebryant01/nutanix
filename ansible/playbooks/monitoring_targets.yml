@@ -1,0 +1,38 @@
+---
+# monitoring_targets.yml
+# Author: Paul Bryant
+#
+# Purpose: Export all configured monitoring targets (SNMP, API, custom) from Prism for integration/visibility.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini monitoring_targets.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/monitoring_targets.json
+
+- name: Export Monitoring Targets
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all monitoring targets
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/monitoring_targets/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "monitoring_target", "length": 100 }
+        return_content: yes
+        validate_certs: false
+      register: monitors
+
+    - name: Write monitoring targets to file
+      copy:
+        dest: "../../docs/reports/monitoring_targets.json"
+        content: "{{ monitors.json | to_nice_json }}"
+      delegate_to: localhost

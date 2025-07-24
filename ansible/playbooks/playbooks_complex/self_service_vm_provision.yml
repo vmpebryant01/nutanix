@@ -1,0 +1,69 @@
+---
+# self_service_vm_provision.yml
+# Author: Paul Bryant
+#
+# Purpose: Provision VM in response to ServiceNow/Jira ticket after approval, and update requester/ITSM.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini self_service_vm_provision.yml --extra-vars "ticket_id=INC123456" --ask-vault-pass
+#
+# Prerequisites:
+#   - ServiceNow/Jira REST API
+#   - Approval status checked before proceeding
+
+- name: Self-Service VM Provisioning (with Approval)
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  vars:
+    ticket_id: "{{ ticket_id | default('N/A') }}"
+
+  tasks:
+    - name: Get approval status from ServiceNow
+      uri:
+        url: "{{ snow_url }}/{{ ticket_id }}"
+        method: GET
+        user: "{{ snow_user }}"
+        password: "{{ snow_pass }}"
+        force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
+        validate_certs: false
+      register: snow_ticket
+
+    - name: Fail if approval is not present
+      fail:
+        msg: "Ticket {{ ticket_id }} is not approved."
+      when: snow_ticket.json.state != "approved"
+
+    - name: Build VM spec from ticket/requester details
+      set_fact:
+        vm_spec: "{{ snow_ticket.json.requested_vm_spec }}"
+
+    - name: Create new VM
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ vm_spec }}"
+        validate_certs: false
+        status_code: 202
+
+    - name: Update ServiceNow ticket with build status
+      uri:
+        url: "{{ snow_url }}/{{ ticket_id }}"
+        method: PATCH
+        user: "{{ snow_user }}"
+        password: "{{ snow_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "state": "resolved", "work_notes": "VM provisioned successfully." }'
+        headers:
+          Content-Type: "application/json"
+        validate_certs: false
+        status_code: 200

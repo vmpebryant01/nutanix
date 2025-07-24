@@ -1,0 +1,41 @@
+---
+# snapshot_report.yml
+# Author: Paul Bryant
+#
+# Purpose: Export current VM snapshots for all VMs to a local report for backup or audit.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini snapshot_report.yml --ask-vault-pass
+#
+# Notes:
+#   - Will generate a JSON report in docs/reports/snapshot_report.json
+
+- name: Export VM Snapshots
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all snapshots
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/snapshots/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "kind": "snapshot",
+            "length": 500
+          }
+        return_content: yes
+        validate_certs: false
+      register: snaps
+
+    - name: Write snapshot list to JSON file
+      copy:
+        dest: "../../docs/reports/snapshot_report.json"
+        content: "{{ snaps.json | to_nice_json }}"
+      delegate_to: localhost

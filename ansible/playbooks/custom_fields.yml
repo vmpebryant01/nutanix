@@ -1,0 +1,38 @@
+---
+# custom_fields.yml
+# Author: Paul Bryant
+#
+# Purpose: Export or update all custom fields assigned to VMs for inventory/reporting.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini custom_fields.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/custom_fields.json
+
+- name: Export VM Custom Fields
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all VMs for custom fields
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: vms
+
+    - name: Write VM custom fields to file
+      copy:
+        dest: "../../docs/reports/custom_fields.json"
+        content: "{{ vms.json | to_nice_json }}"
+      delegate_to: localhost

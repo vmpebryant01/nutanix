@@ -1,0 +1,47 @@
+---
+# vm_inventory.yml
+# Author: Paul Bryant
+#
+# Purpose: Export full VM inventory from Prism Central to local JSON/CSV for documentation, audits, or CMDB sync.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini vm_inventory.yml --ask-vault-pass
+#
+# Notes:
+#   - Prism Central API must be accessible from Ansible control node.
+#   - API user must have read VM privileges.
+
+- name: Export VM inventory from Prism Central
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Get all VMs (paginated query)
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "kind": "vm",
+            "length": 500
+          }
+        return_content: yes
+        validate_certs: false
+      register: vms_response
+
+    - name: Save VM list to JSON file
+      copy:
+        dest: "../../docs/reports/vm_inventory.json"
+        content: "{{ vms_response.json | to_nice_json }}"
+      delegate_to: localhost
+
+    - name: Convert VM list to CSV (optional, custom filter needed for prod)
+      # For production, use a Python filter to flatten VM objects to CSV fields
+      debug:
+        msg: "VM list saved to docs/reports/vm_inventory.json. For CSV, parse JSON externally or with custom plugin."

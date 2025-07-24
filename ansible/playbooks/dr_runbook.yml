@@ -1,0 +1,75 @@
+---
+# dr_runbook.yml
+# Author: Paul Bryant
+#
+# Purpose: Run or simulate a DR test event by calling Prism Central to snapshot or power off designated VMs in bulk.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini dr_runbook.yml --ask-vault-pass
+#
+# CSV:
+#   - ../../csv_samples/dr_runbook.csv: columns: VMName,Action
+
+- name: DR Runbook Automation
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read DR runbook CSV
+      community.general.read_csv:
+        path: ../../csv_samples/dr_runbook.csv
+      register: dr_vms
+
+    - name: Lookup VM UUID by name for DR event
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "filter": "vm_name=={{ item.VMName }}",
+            "kind": "vm"
+          }
+        return_content: yes
+        validate_certs: false
+      loop: "{{ dr_vms.list }}"
+      register: dr_vm_lookup
+
+    - name: Perform DR action (snapshot or power off)
+      block:
+        - name: Take snapshot if action is SNAPSHOT
+          uri:
+            url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.0.json.entities[0].metadata.uuid }}/take_snapshot"
+            method: POST
+            user: "{{ prism_user }}"
+            password: "{{ prism_pass }}"
+            force_basic_auth: yes
+            body_format: json
+            body: |
+              {
+                "snapshot_name": "DRTest_{{ item.1.VMName }}_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
+              }
+            validate_certs: false
+          when: item.1.Action == "SNAPSHOT"
+
+        - name: Power off VM if action is POWEROFF
+          uri:
+            url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.0.json.entities[0].metadata.uuid }}/set_power_state"
+            method: POST
+            user: "{{ prism_user }}"
+            password: "{{ prism_pass }}"
+            force_basic_auth: yes
+            body_format: json
+            body: |
+              {
+                "transition": "OFF"
+              }
+            validate_certs: false
+          when: item.1.Action == "POWEROFF"
+      loop: "{{ zip(dr_vm_lookup.results, dr_vms.list) | list }}"
+      when: item.0.json.entities|length > 0

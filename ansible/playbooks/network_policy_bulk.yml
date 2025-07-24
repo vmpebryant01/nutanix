@@ -1,0 +1,51 @@
+---
+# network_policy_bulk.yml
+# Author: Paul Bryant
+#
+# Purpose: Bulk create or update network policies (microsegmentation, L2/L3) from CSV.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini network_policy_bulk.yml --ask-vault-pass
+#
+# CSV:
+#   - ../../csv_samples/network_policy_bulk.csv: PolicyName,Description,Action,Source,Destination,Protocol,Port
+
+- name: Bulk Network Policy Import
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read network policies from CSV
+      community.general.read_csv:
+        path: ../../csv_samples/network_policy_bulk.csv
+      register: policies
+
+    - name: Create or update network policy
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/network_security_policies"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "spec": {
+              "name": "{{ item.PolicyName }}",
+              "description": "{{ item.Description }}",
+              "resources": {
+                "action": "{{ item.Action }}",
+                "source": "{{ item.Source }}",
+                "destination": "{{ item.Destination }}",
+                "protocol": "{{ item.Protocol }}",
+                "port": "{{ item.Port }}"
+              }
+            }
+          }
+        validate_certs: false
+        status_code: 201
+      loop: "{{ policies.list }}"
+      loop_control:
+        label: "{{ item.PolicyName }}"

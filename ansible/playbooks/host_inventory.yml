@@ -1,0 +1,38 @@
+---
+# host_inventory.yml
+# Author: Paul Bryant
+#
+# Purpose: Export an inventory of all physical hosts in the Nutanix cluster.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini host_inventory.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/host_inventory.json
+
+- name: Export Nutanix Host Inventory
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all hosts
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/hosts/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "host", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: hosts
+
+    - name: Write host inventory to file
+      copy:
+        dest: "../../docs/reports/host_inventory.json"
+        content: "{{ hosts.json | to_nice_json }}"
+      delegate_to: localhost

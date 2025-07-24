@@ -1,0 +1,12 @@
+---
+# Place this in ansible/playbooks/dr_orchestration.yml
+
+- name: Automated DR Orchestration & Validation
+  hosts: prism_dr_site
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+    - ../../.env.dr_vault
+  roles:
+    - role: dr_orchestration
+      dr_vm_list: "{{ lookup('community.general.read_csv', '../../csv_samples/dr_vms.csv') }}"

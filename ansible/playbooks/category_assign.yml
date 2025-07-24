@@ -1,0 +1,54 @@
+---
+# category_assign.yml
+# Author: Paul Bryant
+#
+# Purpose: Bulk assign Nutanix categories/tags to VMs using CSV mapping.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini category_assign.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - CSV at ../../csv_samples/categories.csv with columns: VMName,Category
+
+- name: Bulk Assign Categories to VMs
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read VM/category mapping from CSV
+      community.general.read_csv:
+        path: ../../csv_samples/categories.csv
+      register: vms
+
+    - name: Find VM UUID by name
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "filter": "vm_name=={{ item.VMName }}",
+            "kind": "vm"
+          }
+        return_content: yes
+        validate_certs: false
+      loop: "{{ vms.list }}"
+      register: vm_lookup
+
+    - name: Assign category to each VM
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.0.json.entities[0].metadata.uuid }}/categories/{{ item.1.Category }}"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+        body_format: json
+        body: "{{ {} }}"
+      loop: "{{ zip(vm_lookup.results, vms.list) | list }}"
+      when: item.0.json.entities|length > 0

@@ -1,0 +1,5 @@
+# localhost.yml
+# Vars specific to localhost reporting if needed
+
+local_reports_dir: "../../docs/reports/"
+local_inventory_dir: "../../inventory/"

@@ -1,0 +1,38 @@
+---
+# user_role_map.yml
+# Author: Paul Bryant
+#
+# Purpose: Export a report of all users and their role assignments.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini user_role_map.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/user_role_map.json
+
+- name: Export Prism User Role Map
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all users
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/users/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "user", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: users
+
+    - name: Write user role map to file
+      copy:
+        dest: "../../docs/reports/user_role_map.json"
+        content: "{{ users.json | to_nice_json }}"
+      delegate_to: localhost

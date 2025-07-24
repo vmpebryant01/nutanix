@@ -1,0 +1,38 @@
+---
+# replication_mappings.yml
+# Author: Paul Bryant
+#
+# Purpose: Export mappings of all VM/volume replication policies for DR or backup planning.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini replication_mappings.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/replication_mappings.json
+
+- name: Export Replication Policy Mappings
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all replications
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/replication_policies/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "replication_policy", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: reps
+
+    - name: Write replication mappings to file
+      copy:
+        dest: "../../docs/reports/replication_mappings.json"
+        content: "{{ reps.json | to_nice_json }}"
+      delegate_to: localhost

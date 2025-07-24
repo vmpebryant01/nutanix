@@ -1,0 +1,71 @@
+---
+# patch_management.yml
+# Author: Paul Bryant
+#
+# Purpose: Orchestrate patching of VMs—shutdown/clone, patch, power on, validate.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini patch_management.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - List of VMs to patch in group or CSV
+#   - Patch scripts available
+
+- name: Patch Management Orchestration
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: List VMs to patch (from group or CSV)
+      # Assume VMs are in group 'patch_vms'
+      set_fact:
+        vms: "{{ groups['patch_vms'] }}"
+
+    - name: Shutdown VM before patch
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item }}/set_power_state"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{"transition": "OFF"}'
+        validate_certs: false
+        status_code: 202
+      loop: "{{ vms }}"
+
+    - name: Clone VM (snapshot for rollback)
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item }}/clone"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{"clone_name": "{{ item }}_prepatch_{{ lookup("pipe", "date +%Y%m%d") }}"}'
+        validate_certs: false
+        status_code: 202
+      loop: "{{ vms }}"
+
+    - name: Patch VM (custom patch script or role)
+      debug:
+        msg: "Patch logic (e.g., remote execution, Ansible role) to be inserted here."
+
+    - name: Power on VM after patch
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item }}/set_power_state"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{"transition": "ON"}'
+        validate_certs: false
+        status_code: 202
+      loop: "{{ vms }}"
+
+    - name: Validate VM/application health
+      debug:
+        msg: "Validation/health check logic (ping, API, app) to be added here."

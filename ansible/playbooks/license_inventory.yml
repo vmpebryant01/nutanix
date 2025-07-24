@@ -1,0 +1,38 @@
+---
+# license_inventory.yml
+# Author: Paul Bryant
+#
+# Purpose: Export inventory of all licenses registered on the Nutanix cluster.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini license_inventory.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/license_inventory.json
+
+- name: Export License Inventory
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all licenses
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/licenses/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "license", "length": 100 }
+        return_content: yes
+        validate_certs: false
+      register: licenses
+
+    - name: Write license inventory to file
+      copy:
+        dest: "../../docs/reports/license_inventory.json"
+        content: "{{ licenses.json | to_nice_json }}"
+      delegate_to: localhost

@@ -1,0 +1,38 @@
+---
+# external_backup_jobs.yml
+# Author: Paul Bryant
+#
+# Purpose: Export configuration and results of all external backup jobs (e.g., Veeam, HYCU).
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini external_backup_jobs.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/external_backup_jobs.json
+
+- name: Export External Backup Jobs
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query external backup jobs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/external_backup_jobs/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "external_backup_job", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: backups
+
+    - name: Write external backup jobs to file
+      copy:
+        dest: "../../docs/reports/external_backup_jobs.json"
+        content: "{{ backups.json | to_nice_json }}"
+      delegate_to: localhost

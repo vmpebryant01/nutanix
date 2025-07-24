@@ -1,0 +1,52 @@
+---
+# orphaned_vm_report.yml
+# Author: Paul Bryant
+#
+# Purpose: Report on VMs in Nutanix AHV that are not in CMDB or not running (i.e., orphaned/stale).
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini orphaned_vm_report.yml --ask-vault-pass
+#
+# Output:
+#   - docs/reports/orphaned_vm_report.json
+
+- name: Orphaned VM Report
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Query all VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "kind": "vm", "length": 500 }
+        return_content: yes
+        validate_certs: false
+      register: vms
+
+    - name: Query all VMs in CMDB
+      uri:
+        url: "{{ cmdb_url }}"
+        method: GET
+        user: "{{ cmdb_user }}"
+        password: "{{ cmdb_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      register: cmdb_vms
+
+    - name: Find orphaned VMs (not in CMDB)
+      set_fact:
+        orphaned_vms: "{{ vms.json.entities | rejectattr('spec.name', 'in', cmdb_vms.json | map(attribute='name') | list) | list }}"
+
+    - name: Write orphaned VM report to file
+      copy:
+        dest: "../../docs/reports/orphaned_vm_report.json"
+        content: "{{ orphaned_vms | to_nice_json }}"
+      delegate_to: localhost

@@ -1,0 +1,29 @@
+---
+# prism_vm_snapshot/tasks/main.yml
+# Author: Paul Bryant
+
+- name: Take snapshot of each VM (CSV-driven)
+  uri:
+    url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.VM_UUID }}/take_snapshot"
+    method: POST
+    user: "{{ prism_user }}"
+    password: "{{ prism_pass }}"
+    force_basic_auth: yes
+    body_format: json
+    body: |
+      {
+        "snapshot_name": "AutoBackup_{{ item.VMName }}_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
+      }
+    validate_certs: false
+    status_code: 202
+  loop: "{{ vm_list }}"
+  loop_control:
+    label: "{{ item.VMName }}"
+  register: snapshot_results
+
+- name: Render snapshot report
+  template:
+    src: snapshot_report.json.j2
+    dest: "{{ reports_dir }}/snapshot_report_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}.json"
+  vars:
+    results: "{{ snapshot_results.results }}"

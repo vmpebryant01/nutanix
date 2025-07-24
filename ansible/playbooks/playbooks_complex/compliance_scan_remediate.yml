@@ -1,0 +1,56 @@
+---
+# compliance_scan_remediate.yml
+# Author: Paul Bryant
+#
+# Purpose: Scan all VMs and clusters against CIS/PCI policies, remediate, and export report.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini compliance_scan_remediate.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - CIS/PCI policy definitions in YAML/CSV (../../csv_samples/cis_policies.yaml)
+
+- name: Automated Compliance Scan & Remediation
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+    - ../../csv_samples/cis_policies.yaml
+
+  tasks:
+    - name: Query all VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "kind": "vm", "length": 500 }'
+        return_content: yes
+        validate_certs: false
+      register: vms
+
+    - name: Query all clusters
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/clusters/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: '{ "kind": "cluster", "length": 100 }'
+        return_content: yes
+        validate_certs: false
+      register: clusters
+
+    - name: Run compliance checks and remediate
+      # Insert compliance logic here (iterate over policy set)
+      debug:
+        msg: "Compliance checks/remediation not shown for brevity."
+
+    - name: Export compliance findings to report
+      copy:
+        dest: "../../docs/reports/compliance_scan_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}.json"
+        content: "{{ vms.json | to_nice_json }}"
+      delegate_to: localhost

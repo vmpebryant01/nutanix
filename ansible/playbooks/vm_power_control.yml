@@ -1,0 +1,55 @@
+---
+# vm_power_control.yml
+# Author: Paul Bryant
+#
+# Purpose: Bulk power on/off/reboot VMs using a CSV mapping.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini vm_power_control.yml --ask-vault-pass
+#
+# CSV:
+#   - ../../csv_samples/vm_power_control.csv: VMName,Action (POWER_ON, POWER_OFF, REBOOT)
+
+- name: Bulk VM Power Control
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+
+  tasks:
+    - name: Read power control CSV
+      community.general.read_csv:
+        path: ../../csv_samples/vm_power_control.csv
+      register: power_vms
+
+    - name: Lookup VM UUID by name
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/list"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          {
+            "filter": "vm_name=={{ item.VMName }}",
+            "kind": "vm"
+          }
+        return_content: yes
+        validate_certs: false
+      loop: "{{ power_vms.list }}"
+      register: power_vm_lookup
+
+    - name: Set VM power state as requested
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.0.json.entities[0].metadata.uuid }}/set_power_state"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: |
+          { "transition": "{{ 'ON' if item.1.Action == 'POWER_ON' else 'OFF' if item.1.Action == 'POWER_OFF' else 'RESET' }}" }
+        validate_certs: false
+      loop: "{{ zip(power_vm_lookup.results, power_vms.list) | list }}"
+      when: item.0.json.entities|length > 0

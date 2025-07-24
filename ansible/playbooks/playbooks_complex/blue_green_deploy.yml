@@ -1,0 +1,73 @@
+---
+# blue_green_deploy.yml
+# Author: Paul Bryant
+#
+# Purpose: Deploy new "green" VMs, validate health, update tags to cutover, and rollback on failure.
+#
+# Usage:
+#   ansible-playbook -i ../inventory/hosts.ini blue_green_deploy.yml --extra-vars "deployment_plan=../../csv_samples/blue_green.yaml" --ask-vault-pass
+#
+# Prerequisites:
+#   - deployment_plan YAML defines green VMs and swap logic.
+#   - Health check scripts or endpoints must be available.
+
+- name: Blue-Green Deployment and Swap
+  hosts: prism_central
+  gather_facts: no
+  vars_files:
+    - ../../.env.ansible_vault
+  vars:
+    deployment_plan_file: "{{ deployment_plan | default('../../csv_samples/blue_green.yaml') }}"
+  tasks:
+    - name: Load deployment plan
+      include_vars:
+        file: "{{ deployment_plan_file }}"
+        name: plan
+
+    - name: Deploy green VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body: "{{ item }}"
+        validate_certs: false
+        status_code: 202
+      loop: "{{ plan.green_vms }}"
+
+    - name: Run health checks against green VMs
+      uri:
+        url: "{{ item.health_endpoint }}"
+        method: GET
+        validate_certs: false
+      register: health_results
+      loop: "{{ plan.health_checks }}"
+
+    - name: Fail if health check fails (rollback required)
+      fail:
+        msg: "One or more health checks failed. Manual intervention required."
+      when: health_results.results | selectattr('status', 'ne', 200) | list | length > 0
+
+    - name: Switch tags to swap blue->green
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.vm_uuid }}/categories/Production"
+        method: POST
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+        body_format: json
+        body: "{{ {} }}"
+      loop: "{{ plan.swap_vms }}"
+
+    - name: Remove tags from old blue VMs
+      uri:
+        url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.vm_uuid }}/categories/Production"
+        method: DELETE
+        user: "{{ prism_user }}"
+        password: "{{ prism_pass }}"
+        force_basic_auth: yes
+        validate_certs: false
+      loop: "{{ plan.old_blue_vms }}"
