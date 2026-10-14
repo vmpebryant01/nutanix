@@ -12,6 +12,7 @@
 
 - name: Export License Inventory
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -28,7 +29,7 @@
         body: |
           { "kind": "license", "length": 100 }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: licenses
 
     - name: Write license inventory to file

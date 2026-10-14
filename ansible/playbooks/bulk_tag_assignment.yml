@@ -12,6 +12,7 @@
 
 - name: Bulk Tag Assignment to VMs
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -36,7 +37,7 @@
             "kind": "vm"
           }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       loop: "{{ tags.list }}"
       register: vm_lookup
 
@@ -47,7 +48,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
         body_format: json
         body: "{{ {} }}"
       loop: "{{ zip(vm_lookup.results, tags.list) | list }}"

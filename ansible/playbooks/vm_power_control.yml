@@ -12,6 +12,7 @@
 
 - name: Bulk VM Power Control
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -36,7 +37,7 @@
             "kind": "vm"
           }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       loop: "{{ power_vms.list }}"
       register: power_vm_lookup
 
@@ -50,6 +51,6 @@
         body_format: json
         body: |
           { "transition": "{{ 'ON' if item.1.Action == 'POWER_ON' else 'OFF' if item.1.Action == 'POWER_OFF' else 'RESET' }}" }
-        validate_certs: false
+        validate_certs: true
       loop: "{{ zip(power_vm_lookup.results, power_vms.list) | list }}"
       when: item.0.json.entities|length > 0

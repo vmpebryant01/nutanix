@@ -12,6 +12,7 @@
 
 - name: Bulk Network Policy Import
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -44,7 +45,7 @@
               }
             }
           }
-        validate_certs: false
+        validate_certs: true
         status_code: 201
       loop: "{{ policies.list }}"
       loop_control:

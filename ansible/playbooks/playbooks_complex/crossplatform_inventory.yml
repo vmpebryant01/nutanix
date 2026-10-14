@@ -29,7 +29,7 @@
         body_format: json
         body: '{ "kind": "vm", "length": 500 }'
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: nutanix_vms
 
     - name: Gather vSphere VMs (custom Python script, shell out)
@@ -43,7 +43,7 @@
         user: "{{ cmdb_user }}"
         password: "{{ cmdb_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       register: cmdb_vms
 
     - name: Reconcile all VM lists and find drift

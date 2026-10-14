@@ -1,51 +1,57 @@
-#!/usr/bin/env python3
-"""
-orphaned_vm_audit.py
-Author: Paul Bryant
+"""Report VMs that merit review based on simple inventory signals.
 
-Purpose:
-    Identify VMs that are powered off, have no categories, or are not in a protection domain.
-Usage:
-    python orphaned_vm_audit.py --env .env --csv csv_samples/orphaned_vms_report.csv
-
-Requirements:
-    pip install requests python-dotenv
+These signals do not establish that a VM is orphaned. Author: Paul Bryant.
 """
 
-import os, csv, argparse, requests
-from dotenv import load_dotenv
+import argparse
+import csv
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--env", default=".env")
-parser.add_argument("--csv", required=True)
-args = parser.parse_args()
+from prism_client import PrismClient
 
-load_dotenv(args.env)
-PRISM = os.getenv("PRISM_CENTRAL")
-USER = os.getenv("PRISM_USER")
-PASS = os.getenv("PRISM_PASS")
 
-session = requests.Session()
-session.auth = (USER, PASS)
-session.verify = False
-session.headers.update({"Content-Type": "application/json"})
+def review_reasons(vm):
+    status = vm.get("status", {})
+    metadata = vm.get("metadata", {})
+    reasons = []
+    if status.get("power_state") == "OFF":
+        reasons.append("powered_off")
+    if not metadata.get("categories_mapping"):
+        reasons.append("no_categories")
+    if not status.get("protection_domain"):
+        reasons.append("no_protection_domain_in_response")
+    return reasons
 
-def fetch_vms():
-    url = f"https://{PRISM}:9440/api/nutanix/v3/vms/list"
-    body = {"kind": "vm", "length": 500}
-    r = session.post(url, json=body)
-    return r.json().get("entities", []) if r.ok else []
 
-with open(args.csv, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["VMName", "UUID", "PowerState", "Categories", "ProtectionDomain"])
-    for vm in fetch_vms():
-        name = vm["spec"]["name"]
-        uuid = vm["metadata"]["uuid"]
-        state = vm["status"].get("power_state", "Unknown")
-        cats = ",".join(vm["metadata"].get("categories_mapping", {}).keys())
-        pd = vm["status"].get("protection_domain", "None")
-        if state == "OFF" or not cats or pd == "None":
-            writer.writerow([name, uuid, state, cats, pd])
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--env", default=".env")
+    parser.add_argument("--csv", required=True)
+    args = parser.parse_args(argv)
 
-print(f"Orphaned VM audit exported to {args.csv}")
+    with PrismClient.from_env(args.env) as client:
+        vms = list(client.list_entities("vm"))
+
+    count = 0
+    with open(args.csv, "w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["VMName", "UUID", "PowerState", "Categories", "ProtectionDomain", "ReviewReasons"])
+        for vm in vms:
+            reasons = review_reasons(vm)
+            if not reasons:
+                continue
+            metadata = vm.get("metadata", {})
+            status = vm.get("status", {})
+            writer.writerow([
+                vm.get("spec", {}).get("name", ""),
+                metadata.get("uuid", ""),
+                status.get("power_state", ""),
+                ",".join(sorted(metadata.get("categories_mapping", {}))),
+                status.get("protection_domain", ""),
+                ",".join(reasons),
+            ])
+            count += 1
+    print(f"Exported {count} review candidates to {args.csv}")
+
+
+if __name__ == "__main__":
+    main()

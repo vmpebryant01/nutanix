@@ -1,0 +1,20 @@
+name: Script checks
+
+on: [push, pull_request]
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install YAML parser
+        run: python -m pip install pyyaml
+      - name: Compile Python files
+        run: python -m compileall -q python
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Parse Ansible YAML
+        run: python -c "import pathlib, yaml; [list(yaml.safe_load_all(path.read_text(encoding='utf-8'))) for path in pathlib.Path('ansible').rglob('*.yml')]"

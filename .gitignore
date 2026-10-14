@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+!.env.ansible_vault.example
+!.env.dr_vault.example
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+docs/reports/*.json

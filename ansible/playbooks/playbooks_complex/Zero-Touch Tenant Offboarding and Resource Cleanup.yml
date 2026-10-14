@@ -12,6 +12,7 @@
 
 - name: Tenant Offboarding and Cleanup
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -30,7 +31,7 @@
         body_format: json
         body: '{ "kind": "vm", "length": 500, "filter": "category=={{ tenant_tag }}" }'
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: tenant_vms
 
     - name: Snapshot all tenant VMs for archive
@@ -42,7 +43,7 @@
         force_basic_auth: yes
         body_format: json
         body: '{"snapshot_name": "Offboard_Archive_{{ item.spec.name }}_{{ lookup("pipe", "date +%Y%m%d") }}"}'
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ tenant_vms.json.entities }}"
 
@@ -57,7 +58,7 @@
         user: "{{ cmdb_user }}"
         password: "{{ cmdb_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       loop: "{{ tenant_vms.json.entities }}"
 
     - name: Delete tenant VMs
@@ -67,7 +68,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       loop: "{{ tenant_vms.json.entities }}"
 
     - name: Export final offboarding audit package (ZIP/report)

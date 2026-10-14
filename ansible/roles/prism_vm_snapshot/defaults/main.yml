@@ -1,0 +1,3 @@
+---
+reports_dir: "{{ playbook_dir }}/../../docs/reports"
+confirm_snapshot_operation: false

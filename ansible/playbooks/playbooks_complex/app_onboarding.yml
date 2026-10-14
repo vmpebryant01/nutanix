@@ -14,6 +14,7 @@
 
 - name: End-to-End Automated App Onboarding
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -34,7 +35,7 @@
         force_basic_auth: yes
         body_format: json
         body: "{{ item }}"
-        validate_certs: false
+        validate_certs: true
         status_code: 201
       loop: "{{ app.networks }}"
       loop_control:
@@ -50,7 +51,7 @@
         force_basic_auth: yes
         body_format: json
         body: "{{ item }}"
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ app.vms }}"
       loop_control:
@@ -63,7 +64,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
         body_format: json
         body: "{{ {} }}"
       loop: "{{ app.category_assignments }}"
@@ -80,7 +81,7 @@
         body: "{{ app.cmdb_entry }}"
         headers:
           Content-Type: "application/json"
-        validate_certs: false
+        validate_certs: true
         status_code: 201
 
     - name: Create firewall rules for app
@@ -92,7 +93,7 @@
         force_basic_auth: yes
         body_format: json
         body: "{{ item }}"
-        validate_certs: false
+        validate_certs: true
         status_code: 201
       loop: "{{ app.security_rules }}"
       when: app.security_rules is defined
@@ -108,5 +109,5 @@
         body: "{{ app.snow_update }}"
         headers:
           Content-Type: "application/json"
-        validate_certs: false
+        validate_certs: true
         status_code: 200

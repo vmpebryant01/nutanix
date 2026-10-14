@@ -1,25 +1,25 @@
-# Nutanix AHV Automation Suite
+# Nutanix AHV Automation Scripts
 
-This repository contains 30+ automation scripts for each of Python, Ansible, and NCLI, each designed for safe, bulk, and repeatable management of Nutanix AHV clusters.
+Author: Paul Bryant
 
-**Key Features:**
-- Bulk microsegmentation, tagging, DR runbook, inventory, CMDB sync, compliance, and more
-- All automation is API-driven, CSV-fed, and consultative in design
-- Author for all sample data: Paul Bryant
+This repository contains six runnable Python scripts plus a shared client, 42 Ansible playbooks, and 35 NCLI shell scripts. They are examples for Prism Central and Prism Element environments. API coverage and payloads vary by product version. Test each workflow on a nonproduction system before using it to change infrastructure.
 
-## Structure
+## Python setup
 
-- `python/` — 30 Python scripts
-- `ansible/playbooks/` — 30 Ansible playbooks
-- `ncli/` — 30 NCLI shell scripts
-- `csv_samples/` — Sample input files for each workflow (20 rows each)
-- `.env.example` — Example environment config for Prism, CMDB, SSH
-- `automation_best_practices.md` — Standards for safe automation
-- `dashboard/` — Sample dashboard output templates
+Install Python 3.11 or later, then run `python -m pip install -r requirements.txt`. Copy `.env.example` to `.env` and supply your Prism Central address and credentials. The Python client verifies TLS certificates. Set `PRISM_CA_BUNDLE` if your internal CA is not in the system trust store.
 
-## Getting Started
+Read-only inventory and alert exports use the paginated Prism Central v3 list API. Bulk category assignment and VM power changes print a preview by default and require `--apply`. The power script supports ON and OFF through a VM GET and PUT. A successful API response means that Prism accepted a task; check the task outcome in Prism before treating the change as complete.
 
-1. Copy `.env.example` to `.env` and update with your environment.
-2. Review the CSV samples in `csv_samples/`.
-3. Run scripts from their respective directories.
-4. See `automation_best_practices.md` for safety, logging, rollback, and dry-run guidance.
+`python/export_snapshots.py` stops with an explanation because its former snapshot listing endpoint was not verified. `python/export_recovery_points.py` exports Prism Central recovery points, including each raw record. Prism Central recovery points and Prism Element snapshots are different resources. Validate the recovery point response against your release before relying on that export.
+
+## Ansible setup
+
+From `ansible/`, install `community.general` with `ansible-galaxy collection install -r requirements.yml`. Update `inventory/hosts.ini`. Copy `.env.ansible_vault.example` to `.env.ansible_vault` and `.env.dr_vault.example` to `.env.dr_vault`, set real values, and encrypt both files with `ansible-vault encrypt`. Populate the CSV files in `csv_samples/` before running the related playbooks. API playbooks execute from the controller and validate TLS certificates.
+
+The snapshot and DR roles require explicit confirmation variables. Their action endpoints still need validation against the Prism release and cluster configuration in use. The CSV samples contain headers only so no VM can be targeted accidentally.
+
+## NCLI scripts
+
+The NCLI shell scripts are examples. Review their SSH target, parsing, and command effects before use. Both snapshot cleanup scripts exit without deleting anything until a version-specific, tested snapshot workflow is available. The bulk power and protection domain restore scripts preview by default and require `--apply`.
+
+Static checks and a small Python unit test suite are provided. No live Prism or AHV environment was available for this repository.

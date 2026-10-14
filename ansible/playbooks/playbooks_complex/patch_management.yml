@@ -2,7 +2,7 @@
 # patch_management.yml
 # Author: Paul Bryant
 #
-# Purpose: Orchestrate patching of VMs—shutdown/clone, patch, power on, validate.
+# Purpose: Orchestrate patching of VMs, shutdown/clone, patch, power on, validate.
 #
 # Usage:
 #   ansible-playbook -i ../inventory/hosts.ini patch_management.yml --ask-vault-pass
@@ -13,6 +13,7 @@
 
 - name: Patch Management Orchestration
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -32,7 +33,7 @@
         force_basic_auth: yes
         body_format: json
         body: '{"transition": "OFF"}'
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ vms }}"
 
@@ -45,7 +46,7 @@
         force_basic_auth: yes
         body_format: json
         body: '{"clone_name": "{{ item }}_prepatch_{{ lookup("pipe", "date +%Y%m%d") }}"}'
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ vms }}"
 
@@ -62,7 +63,7 @@
         force_basic_auth: yes
         body_format: json
         body: '{"transition": "ON"}'
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ vms }}"
 

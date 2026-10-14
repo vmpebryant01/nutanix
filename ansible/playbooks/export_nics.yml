@@ -12,6 +12,7 @@
 
 - name: Export VM NIC Info
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -28,7 +29,7 @@
         body: |
           { "kind": "vm", "length": 500 }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: vm_list
 
     - name: Save NIC info to file

@@ -3,9 +3,16 @@
 
 - name: Scheduled Snapshot and Validation
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
+  pre_tasks:
+    - name: Read critical VM mapping
+      community.general.read_csv:
+        path: "{{ playbook_dir }}/../../csv_samples/critical_vms.csv"
+      register: critical_vms
+      delegate_to: localhost
   roles:
     - role: prism_vm_snapshot
-      vm_list: "{{ lookup('community.general.read_csv', '../../csv_samples/critical_vms.csv') }}"
+      vm_list: "{{ critical_vms.list }}"

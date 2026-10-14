@@ -1,92 +1,97 @@
-#!/usr/bin/env python3
-"""
-bulk_category_assign.py
-Author: Paul Bryant
+"""Preview or assign Prism Central v3 category key/value pairs to VMs.
 
-Purpose:
-    Bulk assign categories (tags) to VMs on Nutanix Prism Central from a CSV file.
-    Each row should have VMName and Category columns.
-
-Usage:
-    python bulk_category_assign.py --csv csv_samples/vm_category_assignment.csv --env .env
-
-CSV Format:
-    VMName,Category
-    AppServer01,Production
-    DBServer01,Finance
-    ...
-
-Requirements:
-    pip install requests python-dotenv
-    (Set .env with PRISM_CENTRAL, PRISM_USER, PRISM_PASS)
+CSV columns: VMName,CategoryKey,CategoryValue. Author: Paul Bryant.
 """
 
-import os
-import csv
 import argparse
-import requests
-import logging
-from dotenv import load_dotenv
+import csv
+from copy import deepcopy
+from urllib.parse import quote
 
-# Setup argparse
-parser = argparse.ArgumentParser(description="Bulk assign Nutanix categories to VMs from CSV")
-parser.add_argument("--csv", required=True, help="CSV file with VMName,Category columns")
-parser.add_argument("--env", default=".env", help="Environment file with Prism creds")
-parser.add_argument("--dryrun", action="store_true", help="Show actions without changing anything")
-args = parser.parse_args()
+from prism_client import PrismClient
 
-# Load .env
-load_dotenv(args.env)
-PRISM = os.getenv("PRISM_CENTRAL")
-USER = os.getenv("PRISM_USER")
-PASS = os.getenv("PRISM_PASS")
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+def read_rows(path):
+    with open(path, newline="", encoding="utf-8-sig") as stream:
+        reader = csv.DictReader(stream)
+        required = {"VMName", "CategoryKey", "CategoryValue"}
+        if not reader.fieldnames or not required.issubset(reader.fieldnames):
+            raise ValueError("CSV requires VMName,CategoryKey,CategoryValue")
+        rows = []
+        seen = set()
+        for row in reader:
+            name, key, value = ((row[column] or "").strip() for column in ("VMName", "CategoryKey", "CategoryValue"))
+            if not all((name, key, value)):
+                raise ValueError("CSV contains a blank VM name, key, or value")
+            identity = (name, key, value)
+            if identity in seen:
+                raise ValueError(f"Duplicate assignment: {identity}")
+            seen.add(identity)
+            rows.append(identity)
+    if not rows:
+        raise ValueError("CSV contains no assignments")
+    return rows
 
-if not all([PRISM, USER, PASS]):
-    logging.error("Missing required environment variables. Check .env file.")
-    exit(1)
 
-session = requests.Session()
-session.auth = (USER, PASS)
-session.verify = False
-session.headers.update({"Content-Type": "application/json"})
+def with_category(vm, key, value):
+    updated = deepcopy(vm)
+    updated.pop("status", None)
+    metadata = updated.setdefault("metadata", {})
+    mapping = metadata.setdefault("categories_mapping", {})
+    existing = mapping.get(key, [])
+    if isinstance(existing, str):
+        existing = [existing]
+    mapping[key] = list(dict.fromkeys([*existing, value]))
+    metadata["use_categories_mapping"] = True
+    return updated
 
-def find_vm_uuid(vm_name):
-    url = f"https://{PRISM}:9440/api/nutanix/v3/vms/list"
-    body = {"kind": "vm", "filter": f"vm_name=={vm_name}"}
-    r = session.post(url, json=body)
-    if r.ok and r.json().get("entities"):
-        return r.json()["entities"][0]["metadata"]["uuid"]
-    return None
 
-def assign_category(vm_uuid, category):
-    url = f"https://{PRISM}:9440/api/nutanix/v3/vms/{vm_uuid}/categories/{category}"
-    r = session.post(url, json={})
-    return r.status_code in (200, 201)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--csv", required=True)
+    parser.add_argument("--env", default=".env")
+    parser.add_argument("--apply", action="store_true", help="Write validated assignments")
+    args = parser.parse_args(argv)
+    rows = read_rows(args.csv)
 
-with open(args.csv, newline='') as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        vm_name = row["VMName"].strip()
-        category = row["Category"].strip()
-        if not vm_name or not category:
-            logging.warning(f"Skipping row with missing VMName or Category: {row}")
-            continue
+    with PrismClient.from_env(args.env) as client:
+        vms_by_name = {}
+        for vm in client.list_entities("vm"):
+            vms_by_name.setdefault(vm.get("spec", {}).get("name"), []).append(vm)
+        for name, key, value in rows:
+            matches = vms_by_name.get(name, [])
+            if len(matches) != 1:
+                raise ValueError(f"Expected one VM named {name!r}; found {len(matches)}")
+            print(f"{name}: add {key}:{value}")
+        if not args.apply:
+            print("Preview only. Rerun with --apply to update these VMs.")
+            return
 
-        logging.info(f"Processing VM '{vm_name}' for category '{category}'")
-        uuid = find_vm_uuid(vm_name)
-        if not uuid:
-            logging.error(f"VM '{vm_name}' not found. Skipping.")
-            continue
+        checked_categories = set()
+        for name, key, value in rows:
+            if (key, value) not in checked_categories:
+                client.get(f"categories/{quote(key, safe='')}/{quote(value, safe='')}")
+                checked_categories.add((key, value))
+        assignments = {}
+        for name, key, value in rows:
+            assignments.setdefault(name, []).append((key, value))
+        updates = []
+        for name, pairs in assignments.items():
+            uuid = vms_by_name[name][0]["metadata"]["uuid"]
+            current = client.get(f"vms/{uuid}").json()
+            updated = current
+            for key, value in pairs:
+                updated = with_category(updated, key, value)
+            if updated.get("metadata", {}).get("categories_mapping") == current.get("metadata", {}).get("categories_mapping"):
+                print(f"{name}: categories already assigned")
+                continue
+            updates.append((name, uuid, updated))
 
-        if args.dryrun:
-            logging.info(f"[DRY RUN] Would assign category '{category}' to VM '{vm_name}' (UUID: {uuid})")
-        else:
-            if assign_category(uuid, category):
-                logging.info(f"Category '{category}' assigned to VM '{vm_name}'.")
-            else:
-                logging.error(f"Failed to assign category '{category}' to VM '{vm_name}'.")
+        for name, uuid, updated in updates:
+            response = client.put(f"vms/{uuid}", updated)
+            task_id = response.json().get("status", {}).get("execution_context", {}).get("task_uuid")
+            print(f"{name}: update accepted; task={task_id or 'not returned'}")
 
-logging.info("Bulk category assignment completed.")
+
+if __name__ == "__main__":
+    main()

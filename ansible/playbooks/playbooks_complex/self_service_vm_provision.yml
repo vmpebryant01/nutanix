@@ -13,6 +13,7 @@
 
 - name: Self-Service VM Provisioning (with Approval)
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -30,7 +31,7 @@
         force_basic_auth: yes
         headers:
           Content-Type: "application/json"
-        validate_certs: false
+        validate_certs: true
       register: snow_ticket
 
     - name: Fail if approval is not present
@@ -51,7 +52,7 @@
         force_basic_auth: yes
         body_format: json
         body: "{{ vm_spec }}"
-        validate_certs: false
+        validate_certs: true
         status_code: 202
 
     - name: Update ServiceNow ticket with build status
@@ -65,5 +66,5 @@
         body: '{ "state": "resolved", "work_notes": "VM provisioned successfully." }'
         headers:
           Content-Type: "application/json"
-        validate_certs: false
+        validate_certs: true
         status_code: 200

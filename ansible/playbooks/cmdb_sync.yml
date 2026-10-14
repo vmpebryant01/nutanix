@@ -13,6 +13,7 @@
 
 - name: Sync VM inventory to CMDB
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -29,7 +30,7 @@
         body: |
           { "kind": "vm", "length": 500 }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: vms
 
     - name: Push each VM record to CMDB
@@ -43,7 +44,7 @@
         body: "{{ item }}"
         headers:
           Content-Type: "application/json"
-        validate_certs: false
+        validate_certs: true
         status_code: 201
       loop: "{{ vms.json.entities }}"
       loop_control:
