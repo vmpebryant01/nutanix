@@ -57,4 +57,3 @@
       loop: "{{ rules.list }}"
       loop_control:
         label: "{{ item.RuleName }}"
-      # Add error handling as needed
