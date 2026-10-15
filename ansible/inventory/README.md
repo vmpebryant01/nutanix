@@ -1,7 +1,7 @@
 # Inventory Folder for Nutanix AHV Automation
 
 - **hosts.ini**: Static Ansible inventory for Prism Central, DR, Element, and localhost.
-- **group_vars/**: Per-group non-secret variables (add more as needed).
+- **group_vars/**: Per-group non-secret variables.
 - **host_vars/**: Per-host variables for localhost or other special hosts.
 - All API secrets (usernames/passwords) must be stored in `.env.ansible_vault` and NOT in inventory.
 
