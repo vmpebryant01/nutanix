@@ -1,64 +1,83 @@
-#!/usr/bin/env python3
-"""
-bulk_vm_power.py
-Author: Paul Bryant
+"""Preview or request VM power changes through Prism Central v3.
 
-Purpose:
-    Bulk power on/off/reset VMs listed in a CSV using Prism Central API.
-Usage:
-    python bulk_vm_power.py --csv csv_samples/vm_power_actions.csv --env .env
-
-CSV Format:
-    VMName,Action  # (Action = ON, OFF, RESET)
+CSV columns: VMName,Action where Action is ON or OFF.
+Author: Paul Bryant.
 """
 
-import os, csv, argparse, requests
-from dotenv import load_dotenv
+import argparse
+import csv
+from copy import deepcopy
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--csv", required=True, help="CSV file with VMName,Action")
-parser.add_argument("--env", default=".env", help="Environment file")
-parser.add_argument("--dryrun", action="store_true")
-args = parser.parse_args()
+from prism_client import PrismClient
 
-load_dotenv(args.env)
-PRISM = os.getenv("PRISM_CENTRAL")
-USER = os.getenv("PRISM_USER")
-PASS = os.getenv("PRISM_PASS")
 
-session = requests.Session()
-session.auth = (USER, PASS)
-session.verify = False
-session.headers.update({"Content-Type": "application/json"})
+def read_actions(path):
+    actions = []
+    seen = set()
+    with open(path, newline="", encoding="utf-8-sig") as stream:
+        reader = csv.DictReader(stream)
+        if not reader.fieldnames or not {"VMName", "Action"}.issubset(reader.fieldnames):
+            raise ValueError("CSV requires VMName,Action")
+        for row in reader:
+            name = (row["VMName"] or "").strip()
+            action = (row["Action"] or "").strip().upper()
+            if not name or action not in {"ON", "OFF"}:
+                raise ValueError(f"Invalid VM name or action: {row!r}")
+            if name in seen:
+                raise ValueError(f"VM {name!r} appears more than once")
+            seen.add(name)
+            actions.append((name, action))
+    if not actions:
+        raise ValueError("CSV contains no power actions")
+    return actions
 
-def find_vm_uuid(vm_name):
-    url = f"https://{PRISM}:9440/api/nutanix/v3/vms/list"
-    r = session.post(url, json={"kind": "vm", "filter": f"vm_name=={vm_name}"})
-    if r.ok and r.json().get("entities"):
-        return r.json()["entities"][0]["metadata"]["uuid"]
-    return None
 
-def power_vm(vm_uuid, action):
-    url = f"https://{PRISM}:9440/api/nutanix/v3/vms/{vm_uuid}/set_power_state"
-    body = {"transition": action}
-    r = session.post(url, json=body)
-    return r.status_code in (200, 202)
+def with_power_state(vm, state):
+    updated = deepcopy(vm)
+    updated.pop("status", None)
+    updated.setdefault("spec", {}).setdefault("resources", {})["power_state"] = state
+    return updated
 
-with open(args.csv, newline="") as f:
-    for row in csv.DictReader(f):
-        vm_name = row["VMName"].strip()
-        action = row["Action"].strip().upper()
-        if action not in ("ON", "OFF", "RESET"):
-            print(f"Invalid action '{action}' for {vm_name}")
-            continue
-        uuid = find_vm_uuid(vm_name)
-        if not uuid:
-            print(f"VM '{vm_name}' not found.")
-            continue
-        if args.dryrun:
-            print(f"[DRY RUN] Would set power {action} for VM '{vm_name}'")
-        else:
-            if power_vm(uuid, action):
-                print(f"Power {action} for VM '{vm_name}': SUCCESS")
-            else:
-                print(f"Power {action} for VM '{vm_name}': FAILURE")
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--csv", required=True)
+    parser.add_argument("--env", default=".env")
+    parser.add_argument("--apply", action="store_true", help="Submit the listed power actions")
+    args = parser.parse_args(argv)
+    actions = read_actions(args.csv)
+
+    with PrismClient.from_env(args.env) as client:
+        vms_by_name = {}
+        for vm in client.list_entities("vm"):
+            vms_by_name.setdefault(vm.get("spec", {}).get("name"), []).append(vm)
+        resolved = []
+        for name, action in actions:
+            matches = vms_by_name.get(name, [])
+            if len(matches) != 1:
+                raise ValueError(f"Expected one VM named {name!r}; found {len(matches)}")
+            uuid = matches[0]["metadata"]["uuid"]
+            resolved.append((name, uuid, action))
+            print(f"{name} ({uuid}): {action}")
+        if not args.apply:
+            print("Preview only. Rerun with --apply to submit these power actions.")
+            return
+
+        updates = []
+        for name, uuid, action in resolved:
+            current = client.get(f"vms/{uuid}").json()
+            current_state = current.get("spec", {}).get("resources", {}).get("power_state")
+            if current_state == action:
+                print(f"{name}: already {action}")
+                continue
+            updates.append((name, uuid, with_power_state(current, action)))
+
+        for name, uuid, updated in updates:
+            response = client.put(f"vms/{uuid}", updated)
+            payload = response.json()
+            task_id = payload.get("status", {}).get("execution_context", {}).get("task_uuid")
+            print(f"{name}: request accepted; task={task_id or 'not returned'}")
+
+
+if __name__ == "__main__":
+    main()

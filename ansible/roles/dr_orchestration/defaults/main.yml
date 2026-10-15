@@ -1,0 +1,4 @@
+---
+# Author: Paul Bryant
+reports_dir: "{{ playbook_dir }}/../../docs/reports"
+confirm_dr_operation: false

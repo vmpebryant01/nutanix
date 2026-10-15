@@ -1,0 +1,42 @@
+---
+# prism_vm_snapshot/tasks/main.yml
+# Author: Paul Bryant
+
+- name: Confirm snapshot scope and operation
+  ansible.builtin.assert:
+    that:
+      - confirm_snapshot_operation | bool
+      - vm_list | length > 0
+      - vm_list | selectattr('VM_UUID', 'defined') | list | length == vm_list | length
+    fail_msg: "Set confirm_snapshot_operation=true after reviewing a nonempty VM list with VM_UUID values."
+
+- name: Create report directory
+  ansible.builtin.file:
+    path: "{{ reports_dir }}"
+    state: directory
+    mode: '0750'
+
+- name: Take snapshot of each VM (CSV-driven)
+  uri:
+    url: "https://{{ prism_central }}:9440/api/nutanix/v3/vms/{{ item.VM_UUID }}/take_snapshot"
+    method: POST
+    user: "{{ prism_user }}"
+    password: "{{ prism_pass }}"
+    force_basic_auth: yes
+    body_format: json
+    body:
+      snapshot_name: "AutoBackup_{{ item.VMName }}_{{ now(utc=true, fmt='%Y%m%d%H%M') }}"
+    validate_certs: true
+    status_code: [200, 202]
+  no_log: true
+  loop: "{{ vm_list }}"
+  loop_control:
+    label: "{{ item.VMName }}"
+  register: snapshot_results
+
+- name: Render snapshot report
+  template:
+    src: snapshot_report.json.j2
+    dest: "{{ reports_dir }}/snapshot_report_{{ now(utc=true, fmt='%Y%m%d%H%M') }}.json"
+  vars:
+    results: "{{ snapshot_results.results }}"

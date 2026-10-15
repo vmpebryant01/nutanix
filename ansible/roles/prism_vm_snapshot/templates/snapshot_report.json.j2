@@ -1,0 +1,4 @@
+{
+  "run_time": "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}",
+  "results": {{ results | to_nice_json }}
+}

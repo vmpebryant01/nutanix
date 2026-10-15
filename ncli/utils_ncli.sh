@@ -10,7 +10,7 @@ ncli_ssh() {
   # Usage: ncli_ssh <cluster_ip> <ncli_command>
   local cluster_ip="$1"
   shift
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=no nutanix@"$cluster_ip" "$@"
+  ssh -o BatchMode=yes nutanix@"$cluster_ip" "$@"
 }
 
 # Log with timestamp

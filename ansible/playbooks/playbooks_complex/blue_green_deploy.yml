@@ -13,6 +13,7 @@
 
 - name: Blue-Green Deployment and Swap
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -33,7 +34,7 @@
         force_basic_auth: yes
         body_format: json
         body: "{{ item }}"
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ plan.green_vms }}"
 
@@ -41,7 +42,7 @@
       uri:
         url: "{{ item.health_endpoint }}"
         method: GET
-        validate_certs: false
+        validate_certs: true
       register: health_results
       loop: "{{ plan.health_checks }}"
 
@@ -57,7 +58,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
         body_format: json
         body: "{{ {} }}"
       loop: "{{ plan.swap_vms }}"
@@ -69,5 +70,5 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       loop: "{{ plan.old_blue_vms }}"

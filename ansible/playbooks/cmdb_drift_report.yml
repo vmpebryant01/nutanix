@@ -12,6 +12,7 @@
 
 - name: CMDB Drift Report
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -28,7 +29,7 @@
         body: |
           { "kind": "vm", "length": 500 }
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: vms
 
     - name: Query all VMs in CMDB
@@ -38,7 +39,7 @@
         user: "{{ cmdb_user }}"
         password: "{{ cmdb_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       register: cmdb_vms
 
     - name: Find VM drift (present in Prism, missing from CMDB)

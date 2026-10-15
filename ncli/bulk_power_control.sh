@@ -1,33 +1,53 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # bulk_power_control.sh
 # Author: Paul Bryant
-#
-# Purpose: Power ON, OFF, or RESET VMs in bulk from a CSV.
-#
-# Usage:
-#   ./bulk_power_control.sh <cluster_ip> <vm_power.csv>
-#
-# CSV Format: VMName,Action
-#   (e.g., "AppServer01,ON")
-#
-set -e
+# CSV columns: VMName,Action. Preview is the default.
 
-if [[ -z "$1" || -z "$2" ]]; then
-  echo "Usage: $0 <cluster_ip> <vm_power.csv>"
-  exit 1
+set -euo pipefail
+
+if [[ $# -lt 2 || $# -gt 3 || ( $# -eq 3 && $3 != --apply ) ]]; then
+  printf 'Usage: %s <cluster_host> <vm_power.csv> [--apply]\n' "$0" >&2
+  exit 2
+fi
+cluster_host=$1
+csv=$2
+if [[ ! $cluster_host =~ ^[A-Za-z0-9.-]+$ || ! -r $csv ]]; then
+  printf 'Invalid cluster host or unreadable CSV file.\n' >&2
+  exit 2
 fi
 
-CLUSTER_IP="$1"
-CSV="$2"
+names=()
+actions=()
+while IFS=, read -r vm_name action extra || [[ -n ${vm_name:-} ]]; do
+  action=${action%$'\r'}
+  if [[ $vm_name == VMName && $action == Action ]]; then
+    continue
+  fi
+  if [[ -n ${extra:-} || ! $vm_name =~ ^[A-Za-z0-9._-]+$ || ! $action =~ ^(ON|OFF)$ ]]; then
+    printf 'Invalid VM name or action in CSV: %s,%s\n' "$vm_name" "$action" >&2
+    exit 2
+  fi
+  names+=("$vm_name")
+  actions+=("$action")
+done < "$csv"
 
-while IFS=, read -r VMNAME ACTION; do
-  [[ "$VMNAME" == "VMName" ]] && continue
-  echo "[$(date)] Setting power $ACTION for $VMNAME..."
-  case "$ACTION" in
-    ON)    CMD="ncli vm power-on name=\"$VMNAME\"" ;;
-    OFF)   CMD="ncli vm power-off name=\"$VMNAME\"" ;;
-    RESET) CMD="ncli vm reset name=\"$VMNAME\"" ;;
-    *)     echo "Invalid action $ACTION for $VMNAME"; continue ;;
+if (( ${#names[@]} == 0 )); then
+  printf 'CSV has no power actions.\n' >&2
+  exit 2
+fi
+for index in "${!names[@]}"; do
+  printf '%s: %s\n' "${names[index]}" "${actions[index]}"
+done
+if [[ ${3:-} != --apply ]]; then
+  printf 'Preview only. Rerun with --apply to change power state.\n'
+  exit 0
+fi
+
+for index in "${!names[@]}"; do
+  vm_name=${names[index]}
+  case ${actions[index]} in
+    ON) command='power-on' ;;
+    OFF) command='power-off' ;;
   esac
-  ssh -o BatchMode=yes nutanix@"$CLUSTER_IP" "$CMD" || echo "Failed for $VMNAME"
-done < "$CSV"
+  ssh -o BatchMode=yes "nutanix@$cluster_host" "ncli vm $command name=$vm_name"
+done

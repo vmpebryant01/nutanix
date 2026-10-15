@@ -2,7 +2,7 @@
 # dr_orchestration.yml
 # Author: Paul Bryant
 #
-# Purpose: Execute a DR test—initiate snapshots, power up at DR site, validate, and generate compliance report.
+# Purpose: Execute a DR test, initiate snapshots, power up at DR site, validate, and generate compliance report.
 #
 # Usage:
 #   ansible-playbook -i ../inventory/hosts.ini dr_orchestration.yml --ask-vault-pass
@@ -13,6 +13,7 @@
 
 - name: Automated DR Orchestration & Validation
   hosts: prism_dr_site
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -31,7 +32,7 @@
           {
             "snapshot_name": "DRTest_{{ item.name }}_{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
           }
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ groups['dr_vms'] }}"
       loop_control:
@@ -47,7 +48,7 @@
         body_format: json
         body: |
           { "transition": "ON" }
-        validate_certs: false
+        validate_certs: true
         status_code: 202
       loop: "{{ groups['dr_vms'] }}"
       loop_control:
@@ -57,7 +58,7 @@
       uri:
         url: "{{ item.health_endpoint }}"
         method: GET
-        validate_certs: false
+        validate_certs: true
       register: dr_validation
       loop: "{{ groups['dr_vms'] }}"
       loop_control:

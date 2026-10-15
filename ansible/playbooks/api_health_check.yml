@@ -12,6 +12,7 @@
 
 - name: Nutanix Prism Central API Health Check
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -24,7 +25,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
       register: cluster_health
 
     - name: Check /v3/vms/list endpoint
@@ -34,7 +35,7 @@
         user: "{{ prism_user }}"
         password: "{{ prism_pass }}"
         force_basic_auth: yes
-        validate_certs: false
+        validate_certs: true
         body_format: json
         body: |
           { "kind": "vm", "length": 1 }

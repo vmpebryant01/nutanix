@@ -12,6 +12,7 @@
 
 - name: Automated Compliance Scan & Remediation
   hosts: prism_central
+  connection: local
   gather_facts: no
   vars_files:
     - ../../.env.ansible_vault
@@ -28,7 +29,7 @@
         body_format: json
         body: '{ "kind": "vm", "length": 500 }'
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: vms
 
     - name: Query all clusters
@@ -41,7 +42,7 @@
         body_format: json
         body: '{ "kind": "cluster", "length": 100 }'
         return_content: yes
-        validate_certs: false
+        validate_certs: true
       register: clusters
 
     - name: Run compliance checks and remediate
