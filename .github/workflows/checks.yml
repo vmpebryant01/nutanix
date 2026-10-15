@@ -18,3 +18,5 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Parse Ansible YAML
         run: python -c "import pathlib, yaml; [list(yaml.safe_load_all(path.read_text(encoding='utf-8'))) for path in pathlib.Path('ansible').rglob('*.yml')]"
+      - name: Parse NCLI shell scripts
+        run: find ncli -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
